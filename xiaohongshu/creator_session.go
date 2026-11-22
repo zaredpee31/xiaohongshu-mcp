@@ -13,11 +13,12 @@ const (
 	urlOfCreatorHome = `https://creator.xiaohongshu.com/?source=official`
 
 	creatorSessionCookie  = "galaxy_creator_session_id"
-	creatorSessionTimeout = 15 * time.Second
+	creatorSessionTimeout = 60 * time.Second
 )
 
 // ensureCreatorSession 确认创作者中心已登录。
 // 2026-11 实测小红书不再下发 galaxy_creator_session_id，只认这个 cookie 会把已登录的号误判成失效。
+// 2026-11-22 实测登录后会先被弹去 /login 再自己跳回 /new/home，「发布笔记」7~20 秒才出来，所以等 60 秒。
 // 现在两样有一样就算登上：还有这个 cookie；或者创作者中心页面没被跳去登录页、且看得到「发布笔记」。
 func ensureCreatorSession(page *rod.Page) error {
 	if hasCreatorSession(page) {
@@ -36,7 +37,12 @@ func ensureCreatorSession(page *rod.Page) error {
 			return nil
 		}
 	}
-	return errors.New("创作者中心登录失效，请重新扫码登录")
+	// 超时时把最后停在的网址带进报错（去掉 ? 后面的参数），日志里一看就知道是还在 /login 还是别的页
+	last := ""
+	if info, err := page.Info(); err == nil {
+		last = strings.SplitN(info.URL, "?", 2)[0]
+	}
+	return errors.Errorf("创作者中心登录失效，请重新扫码登录（等了 %v，最后停在 %s）", creatorSessionTimeout, last)
 }
 
 func hasCreatorSession(page *rod.Page) bool {
